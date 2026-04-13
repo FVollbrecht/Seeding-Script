@@ -126,6 +126,19 @@ seeding-script/
 
 ---
 
+## Building a Standalone Executable
+
+Run `build.bat` to produce a single `.exe` that needs no Python installation:
+
+```bat
+build.bat
+```
+
+The script installs PyInstaller and outputs `dist\SquadMonitor.exe`.  
+Copy `SquadMonitor.exe` and `config.json` to any Windows machine — no further setup required.
+
+---
+
 ## License
 
 MIT

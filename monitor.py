@@ -15,6 +15,7 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox, ttk
 from urllib.error import HTTPError, URLError
+from dataclasses import asdict, dataclass
 from urllib.request import Request, urlopen
 
 try:
@@ -39,14 +40,25 @@ LOG_FILE = os.path.join(_BASE_DIR, f"monitor_{datetime.now().strftime('%Y-%m-%d'
 
 # ── Konstanten ──────────────────────────────────────────────────────────────────
 API_BASE = "https://api.battlemetrics.com/servers/"
+API_FIELDS = "?fields[servers]=players,maxPlayers,name,status"
 SERVER_PAGE_BASE = "https://www.battlemetrics.com/servers/squad/"
-DEFAULT_CONFIG: dict = {
-    "server_id": "1972911",
-    "threshold": 65,
-    "check_interval_seconds": 30,
-    "prompt_timeout_seconds": 60,
-    "shutdown_delay_seconds": 30,
-}
+def _is_valid_time(s: str) -> bool:
+    """Gibt True zurück wenn s ein gültiges HH:MM-Format ist."""
+    parts = s.split(":")
+    if len(parts) != 2:
+        return False
+    h, m = parts
+    return h.isdigit() and m.isdigit() and 0 <= int(h) <= 23 and 0 <= int(m) <= 59
+
+
+@dataclass
+class AppConfig:
+    server_id: str = "1972911"
+    threshold: int = 65
+    check_interval_seconds: int = 30
+    prompt_timeout_seconds: int = 60
+    shutdown_delay_seconds: int = 30
+    shutdown_time: str = ""  # HH:MM oder leer = deaktiviert
 RETRY_ATTEMPTS = 3
 RETRY_DELAY_SECONDS = 5
 WINDOW_WIDTH = 800
@@ -70,26 +82,31 @@ def _squad_is_running() -> tuple[bool, str]:
 
 
 # ── Konfiguration ───────────────────────────────────────────────────────────────
-def load_config() -> dict:
+def load_config() -> AppConfig:
+    default = AppConfig()
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            for key, val in DEFAULT_CONFIG.items():
-                data.setdefault(key, val)
-            return data
+            return AppConfig(
+                server_id=str(data.get("server_id", default.server_id)),
+                threshold=int(data.get("threshold", default.threshold)),
+                check_interval_seconds=int(data.get("check_interval_seconds", default.check_interval_seconds)),
+                prompt_timeout_seconds=int(data.get("prompt_timeout_seconds", default.prompt_timeout_seconds)),
+                shutdown_delay_seconds=int(data.get("shutdown_delay_seconds", default.shutdown_delay_seconds)),
+            )
         except Exception as exc:
             print(f"[config] Fehler beim Lesen: {exc} – Standardwerte werden verwendet.")
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(DEFAULT_CONFIG, f, indent=4, ensure_ascii=False)
-    return dict(DEFAULT_CONFIG)
+        json.dump(asdict(default), f, indent=4, ensure_ascii=False)
+    return default
 
 
-def save_config(config: dict) -> None:
+def save_config(cfg: AppConfig) -> None:
     """Schreibt die aktuelle Konfiguration zurück in config.json."""
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4, ensure_ascii=False)
+            json.dump(asdict(cfg), f, indent=4, ensure_ascii=False)
     except Exception as exc:
         print(f"[config] Fehler beim Speichern: {exc}")
 
@@ -118,18 +135,19 @@ def _make_tray_image(size: int = 64) -> "Image.Image":
 
 # ── Haupt-App ───────────────────────────────────────────────────────────────────
 class BattleMetricsMonitorApp:
-    def __init__(self, root: tk.Tk, config: dict, logger: logging.Logger):
+    def __init__(self, root: tk.Tk, cfg: AppConfig, logger: logging.Logger):
         self.root = root
-        self.config = config
+        self.cfg = cfg
         self.logger = logger
 
-        self.server_id: str = str(config["server_id"])
-        self.threshold: int = int(config["threshold"])
-        self.check_interval: int = int(config["check_interval_seconds"])
-        self.prompt_timeout: int = int(config["prompt_timeout_seconds"])
-        self.shutdown_delay: int = int(config["shutdown_delay_seconds"])
+        self.server_id: str = cfg.server_id
+        self.threshold: int = cfg.threshold
+        self.check_interval: int = cfg.check_interval_seconds
+        self.prompt_timeout: int = cfg.prompt_timeout_seconds
+        self.shutdown_delay: int = cfg.shutdown_delay_seconds
+        self.shutdown_time: str = cfg.shutdown_time
 
-        self.api_url = f"{API_BASE}{self.server_id}"
+        self.api_url = f"{API_BASE}{self.server_id}{API_FIELDS}"
         self.server_page_url = f"{SERVER_PAGE_BASE}{self.server_id}"
 
         self.current_players: int = 0
@@ -138,7 +156,8 @@ class BattleMetricsMonitorApp:
         self.last_update: str = "–"
         self.next_check_remaining: int = self.check_interval
         self.prompted_for_current_high: bool = False
-        self.fetch_in_progress: bool = False
+        self._prompted_for_schedule: bool = False
+        self._fetch_event = threading.Event()
         self.running: bool = True
         self.shutdown_pending: bool = False
         self._squad_kill_timer_id: str | None = None
@@ -167,6 +186,7 @@ class BattleMetricsMonitorApp:
         self.update_clock()
         self.update_countdown()
         self.update_squad_status()
+        self.check_schedule_shutdown()
         self.schedule_fetch(initial=True)
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -296,10 +316,11 @@ class BattleMetricsMonitorApp:
 
         ttk.Label(status_card, text="Status", style="Muted.TLabel").pack(anchor="w")
         self.status_var = tk.StringVar(value="Warte auf erste Daten…")
-        ttk.Label(
+        self.status_label = ttk.Label(
             status_card, textvariable=self.status_var,
             style="Dark.TLabel", wraplength=330,
-        ).pack(anchor="w", pady=(4, 6))
+        )
+        self.status_label.pack(anchor="w", pady=(4, 6))
         self.last_update_var = tk.StringVar(value="Letzte Aktualisierung: –")
         ttk.Label(
             status_card, textvariable=self.last_update_var,
@@ -324,6 +345,22 @@ class BattleMetricsMonitorApp:
             font=("Segoe UI", 9, "bold"),
         )
         self.squad_status_label.pack(side="left", padx=(6, 0))
+
+        schedule_row = tk.Frame(status_card, bg="#1f2937")
+        schedule_row.pack(anchor="w", pady=(4, 0))
+        tk.Label(
+            schedule_row, text="Zeitplan:",
+            bg="#1f2937", fg="#9ca3af",
+            font=("Segoe UI", 9),
+        ).pack(side="left")
+        self.schedule_status_var = tk.StringVar()
+        self.schedule_status_label = tk.Label(
+            schedule_row, textvariable=self.schedule_status_var,
+            bg="#1f2937", fg="#9ca3af",
+            font=("Segoe UI", 9, "bold"),
+        )
+        self.schedule_status_label.pack(side="left", padx=(6, 0))
+        self._refresh_schedule_display()
 
         self.cancel_btn = tk.Button(
             btn_frame, text="⛔  Shutdown abbrechen",
@@ -426,8 +463,9 @@ class BattleMetricsMonitorApp:
         self.info_text.config(state="disabled")
         self.logger.info(text)
 
-    def set_status(self, text: str) -> None:
+    def set_status(self, text: str, color: str = "#e2e8f0") -> None:
         self.status_var.set(text)
+        self.status_label.config(foreground=color)
 
     def _set_shutdown_pending(self, pending: bool) -> None:
         self.shutdown_pending = pending
@@ -462,6 +500,52 @@ class BattleMetricsMonitorApp:
             self.squad_status_var.set("❌ Nicht erkannt")
             self.squad_status_label.config(fg="#f87171")
 
+    def _refresh_schedule_display(self) -> None:
+        if self.shutdown_time:
+            self.schedule_status_var.set(f"⏰ {self.shutdown_time}")
+            self.schedule_status_label.config(fg="#60a5fa")
+        else:
+            self.schedule_status_var.set("⏸ Deaktiviert")
+            self.schedule_status_label.config(fg="#9ca3af")
+
+    def check_schedule_shutdown(self) -> None:
+        if not self.running:
+            return
+        if self.shutdown_time and not self.shutdown_pending:
+            now_hm = datetime.now().strftime("%H:%M")
+            if now_hm == self.shutdown_time:
+                if not self._prompted_for_schedule:
+                    self._prompted_for_schedule = True
+                    self.root.after(200, self._trigger_schedule_shutdown)
+            else:
+                self._prompted_for_schedule = False
+        self.root.after(15_000, self.check_schedule_shutdown)
+
+    def _trigger_schedule_shutdown(self) -> None:
+        self.append_info(f"Zeitplan erreicht ({self.shutdown_time}). Dialog wird geöffnet…")
+        self.set_status(f"Zeitplan {self.shutdown_time}  •  Warte auf Bestätigung…")
+        self._restore_window()
+        prompt = ShutdownPrompt(
+            master=self.root,
+            players=self.current_players,
+            max_players=self.max_players,
+            timeout_seconds=self.prompt_timeout,
+            threshold=self.threshold,
+            reason=f"Geplantes Beenden um {self.shutdown_time} Uhr",
+        )
+        result = prompt.show()
+        if result in (True, None):
+            reason_str = "Benutzer bestätigt" if result is True else "Timeout"
+            self.append_info(f"Zeitplan-Shutdown gestartet ({reason_str}).")
+            self.logger.warning("Zeitplan-Shutdown. Zeit: %s, Grund: %s", self.shutdown_time, reason_str)
+            self.set_status("Shutdown wird gestartet…")
+            self._execute_shutdown(self.current_players)
+        else:
+            self.append_info("Zeitplan-Shutdown abgelehnt. Überwachung läuft weiter.")
+            self.logger.info("Zeitplan-Shutdown abgelehnt. Zeit: %s", self.shutdown_time)
+            self.set_status("Überwachung läuft")
+            self._prompted_for_schedule = False
+
     def update_clock(self) -> None:
         now = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
         self.last_update_var.set(f"Letzte Aktualisierung: {self.last_update}  •  Lokal: {now}")
@@ -481,57 +565,59 @@ class BattleMetricsMonitorApp:
     def schedule_fetch(self, initial: bool = False) -> None:
         if not self.running:
             return
-        if not self.fetch_in_progress:
-            self.fetch_in_progress = True
+        if not self._fetch_event.is_set():
+            self._fetch_event.set()
             self.set_status("Daten werden geladen…")
             threading.Thread(target=self._fetch_with_retry, daemon=True).start()
         delay_ms = 500 if initial else self.check_interval * 1000
         self.root.after(delay_ms, lambda: self.schedule_fetch(initial=False))
 
     def _fetch_with_retry(self) -> None:
-        last_error = "Unbekannter Fehler"
-        for attempt in range(1, RETRY_ATTEMPTS + 1):
-            try:
-                req = Request(
-                    self.api_url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (ShutdownMonitor/2.0)",
-                        "Accept": "application/json",
-                    },
-                )
-                with urlopen(req, timeout=20) as resp:
-                    raw = json.loads(resp.read().decode("utf-8"))
+        try:
+            last_error = "Unbekannter Fehler"
+            for attempt in range(1, RETRY_ATTEMPTS + 1):
+                try:
+                    req = Request(
+                        self.api_url,
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (ShutdownMonitor/2.0)",
+                            "Accept": "application/json",
+                        },
+                    )
+                    with urlopen(req, timeout=20) as resp:
+                        raw = json.loads(resp.read().decode("utf-8"))
 
-                attrs = raw.get("data", {}).get("attributes", {})
-                players = attrs.get("players")
-                max_players = attrs.get("maxPlayers")
-                server_name = attrs.get("name") or "BattleMetrics Server"
+                    attrs = raw["data"]["attributes"]
+                    players: int = attrs["players"]
+                    max_players: int = attrs["maxPlayers"]
+                    server_name: str = attrs.get("name") or "BattleMetrics Server"
+                    online: bool = attrs.get("status") == "online"
 
-                if not isinstance(players, int) or not isinstance(max_players, int):
-                    raise ValueError("Spielerzahl nicht im erwarteten Format.")
+                    if not isinstance(players, int) or not isinstance(max_players, int):
+                        raise ValueError("Spielerzahl nicht im erwarteten Format.")
 
-                self.root.after(
-                    0,
-                    lambda p=players, m=max_players, n=server_name: self._apply_data(n, p, m),
-                )
-                self.fetch_in_progress = False
-                return
+                    self.root.after(
+                        0,
+                        lambda p=players, m=max_players, n=server_name, o=online: self._apply_data(n, p, m, o),
+                    )
+                    return
 
-            except HTTPError as exc:
-                last_error = f"HTTP {exc.code}: {exc.reason}"
-            except URLError as exc:
-                last_error = f"Verbindungsfehler: {exc.reason}"
-            except Exception as exc:
-                last_error = str(exc)
+                except HTTPError as exc:
+                    last_error = f"HTTP {exc.code}: {exc.reason}"
+                except URLError as exc:
+                    last_error = f"Verbindungsfehler: {exc.reason}"
+                except Exception as exc:
+                    last_error = str(exc)
 
-            if attempt < RETRY_ATTEMPTS:
-                msg = f"API-Fehler (Versuch {attempt}/{RETRY_ATTEMPTS}): {last_error} – Retry in {RETRY_DELAY_SECONDS}s"
-                self.root.after(0, lambda m=msg: self.append_info(m))
-                time.sleep(RETRY_DELAY_SECONDS)
+                if attempt < RETRY_ATTEMPTS:
+                    msg = f"API-Fehler (Versuch {attempt}/{RETRY_ATTEMPTS}): {last_error} – Retry in {RETRY_DELAY_SECONDS}s"
+                    self.root.after(0, lambda m=msg: self.append_info(m))
+                    time.sleep(RETRY_DELAY_SECONDS)
 
-        final_msg = f"API nicht erreichbar nach {RETRY_ATTEMPTS} Versuchen: {last_error}"
-        self.root.after(0, lambda m=final_msg: self._handle_fetch_error(m))
-        self.fetch_in_progress = False
+            final_msg = f"API nicht erreichbar nach {RETRY_ATTEMPTS} Versuchen: {last_error}"
+            self.root.after(0, lambda m=final_msg: self._handle_fetch_error(m))
+        finally:
+            self._fetch_event.clear()
 
     def _handle_fetch_error(self, text: str) -> None:
         self.last_update = "Fehler"
@@ -540,7 +626,7 @@ class BattleMetricsMonitorApp:
         self.logger.error(text)
         self.next_check_remaining = self.check_interval
 
-    def _apply_data(self, server_name: str, players: int, max_players: int) -> None:
+    def _apply_data(self, server_name: str, players: int, max_players: int, online: bool = True) -> None:
         self.server_name = server_name
         self.current_players = players
         self.max_players = max_players
@@ -553,6 +639,9 @@ class BattleMetricsMonitorApp:
         utilization = round((players / max_players) * 100) if max_players > 0 else 0
         self.utilization_var.set(f"Auslastung: {utilization} %")
 
+        server_state = "Online" if online else "Offline"
+        state_color = "#22c55e" if online else "#f87171"
+
         self.threshold_bar["maximum"] = max(self.threshold, 1)
         self.threshold_bar["value"] = min(players, self.threshold)
         if players < self.threshold:
@@ -563,7 +652,7 @@ class BattleMetricsMonitorApp:
             self.threshold_text_var.set(f"Schwelle überschritten um {players - self.threshold}")
 
         self.last_update = datetime.now().strftime("%H:%M:%S")
-        self.set_status(f"Online  •  {players}/{max_players} Spieler  •  {utilization} %")
+        self.set_status(f"{server_state}  •  {players}/{max_players} Spieler  •  {utilization} %", color=state_color)
         self.next_check_remaining = self.check_interval
         self.append_info(f"Spielerstand: {players}/{max_players}  (Auslastung {utilization} %)")
 
@@ -634,7 +723,11 @@ class BattleMetricsMonitorApp:
             try:
                 pname = proc.info["name"] or ""
                 if pname.lower() in names_lower:
-                    proc.kill()
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except psutil.TimeoutExpired:
+                        proc.kill()
                     self.append_info(f"{pname} wurde beendet.")
                     self.logger.info("%s beendet.", pname)
                     killed = True
@@ -650,30 +743,34 @@ class BattleMetricsMonitorApp:
 
     # ── Einstellungen ───────────────────────────────────────────────────────────
     def open_settings(self) -> None:
-        dialog = SettingsDialog(master=self.root, config=self.config)
-        new_config = dialog.show()
-        if new_config is not None:
-            self._apply_settings(new_config)
+        dialog = SettingsDialog(master=self.root, cfg=self.cfg)
+        new_cfg = dialog.show()
+        if new_cfg is not None:
+            self._apply_settings(new_cfg)
 
-    def _apply_settings(self, new_config: dict) -> None:
+    def _apply_settings(self, new_cfg: AppConfig) -> None:
         old_id = self.server_id
-        self.config.update(new_config)
-        save_config(self.config)
+        self.cfg = new_cfg
+        save_config(self.cfg)
 
-        self.server_id = str(new_config["server_id"])
-        self.threshold = int(new_config["threshold"])
-        self.check_interval = int(new_config["check_interval_seconds"])
-        self.prompt_timeout = int(new_config["prompt_timeout_seconds"])
-        self.shutdown_delay = int(new_config["shutdown_delay_seconds"])
+        self.server_id = new_cfg.server_id
+        self.threshold = new_cfg.threshold
+        self.check_interval = new_cfg.check_interval_seconds
+        self.prompt_timeout = new_cfg.prompt_timeout_seconds
+        self.shutdown_delay = new_cfg.shutdown_delay_seconds
+        self.shutdown_time = new_cfg.shutdown_time
+        self._prompted_for_schedule = False
 
         if self.server_id != old_id:
-            self.api_url = f"{API_BASE}{self.server_id}"
+            self.api_url = f"{API_BASE}{self.server_id}{API_FIELDS}"
             self.server_page_url = f"{SERVER_PAGE_BASE}{self.server_id}"
             self.prompted_for_current_high = False
 
+        schedule_part = f"  •  Zeitplan: {self.shutdown_time}" if self.shutdown_time else ""
         self.header_sub_var.set(
-            f"Server {self.server_id}  •  Schwelle: {self.threshold} Spieler  •  Intervall: {self.check_interval}s"
+            f"Server {self.server_id}  •  Schwelle: {self.threshold} Spieler  •  Intervall: {self.check_interval}s{schedule_part}"
         )
+        self._refresh_schedule_display()
         self.threshold_value_var.set(f"{self.threshold} Spieler")
         self.threshold_bar["maximum"] = max(self.threshold, 1)
         self.threshold_bar["value"] = min(self.current_players, self.threshold)
@@ -685,10 +782,11 @@ class BattleMetricsMonitorApp:
             self.threshold_text_var.set(f"Schwelle überschritten um {self.current_players - self.threshold}")
 
         self.next_check_remaining = self.check_interval
+        schedule_info = f" | Zeitplan {self.shutdown_time}" if self.shutdown_time else ""
         self.append_info(
             f"Einstellungen gespeichert: Server {self.server_id} | Schwelle {self.threshold} | "
             f"Intervall {self.check_interval}s | Timeout {self.prompt_timeout}s | "
-            f"Shutdown-Delay {self.shutdown_delay}s"
+            f"Shutdown-Delay {self.shutdown_delay}s{schedule_info}"
         )
 
     # ── Beenden ─────────────────────────────────────────────────────────────────
@@ -711,16 +809,17 @@ class SettingsDialog:
         ("check_interval_seconds", "Prüfintervall (Sekunden)",     "int",  "Wie oft die API abgefragt wird"),
         ("prompt_timeout_seconds", "Dialog-Timeout (Sekunden)",    "int",  "Automatischer Shutdown nach dieser Zeit ohne Reaktion"),
         ("shutdown_delay_seconds", "Shutdown-Verzögerung (Sek.)",  "int",  "Verzögerung zwischen Befehl und tatsächlichem Shutdown"),
+        ("shutdown_time",          "Zeitplan-Shutdown (HH:MM)",    "time", "Täglich zu dieser Uhrzeit beenden. Leer = deaktiviert"),
     ]
 
-    def __init__(self, master: tk.Tk, config: dict):
+    def __init__(self, master: tk.Tk, cfg: AppConfig):
         self.master = master
-        self.config = config
-        self.result: dict | None = None
+        self.cfg = cfg
+        self.result: AppConfig | None = None
         self.window: tk.Toplevel | None = None
         self._entries: dict[str, tk.StringVar] = {}
 
-    def show(self) -> dict | None:
+    def show(self) -> AppConfig | None:
         self.window = tk.Toplevel(self.master)
         self.window.title("Einstellungen")
         self.window.configure(bg="#111827")
@@ -744,7 +843,7 @@ class SettingsDialog:
                 font=("Segoe UI", 10, "bold"), anchor="w", width=30,
             ).grid(row=base_row, column=0, sticky="nw", padx=(0, 12), pady=(6, 0))
 
-            var = tk.StringVar(value=str(self.config.get(key, "")))
+            var = tk.StringVar(value=str(getattr(self.cfg, key, "")))
             self._entries[key] = var
             tk.Entry(
                 wrap, textvariable=var,
@@ -805,9 +904,15 @@ class SettingsDialog:
 
     def _save(self) -> None:
         assert self.window is not None
-        new_cfg: dict = {}
+        data: dict = {}
         for key, label, typ, _ in self.FIELDS:
             raw = self._entries[key].get().strip()
+            if typ == "time":
+                if raw and not _is_valid_time(raw):
+                    self.error_label.config(text=f"'{label}' muss im Format HH:MM sein (z. B. 23:00) oder leer.")
+                    return
+                data[key] = raw
+                continue
             if not raw:
                 self.error_label.config(text=f"'{label}' darf nicht leer sein.")
                 return
@@ -815,10 +920,10 @@ class SettingsDialog:
                 if not raw.isdigit() or int(raw) < 1:
                     self.error_label.config(text=f"'{label}' muss eine positive ganze Zahl sein.")
                     return
-                new_cfg[key] = int(raw)
+                data[key] = int(raw)
             else:
-                new_cfg[key] = raw
-        self.result = new_cfg
+                data[key] = raw
+        self.result = AppConfig(**data)
         self.window.destroy()
 
     def _cancel(self) -> None:
@@ -836,12 +941,14 @@ class ShutdownPrompt:
         max_players: int,
         timeout_seconds: int,
         threshold: int,
+        reason: str = "",
     ):
         self.master = master
         self.players = players
         self.max_players = max_players
         self.timeout_seconds = timeout_seconds
         self.threshold = threshold
+        self.reason = reason
         self.remaining = timeout_seconds
         self.result: bool | None = None
         self.window: tk.Toplevel | None = None
@@ -862,13 +969,15 @@ class ShutdownPrompt:
             bg="#111827", fg="#f9fafb", font=("Segoe UI", 15, "bold"),
         ).pack(anchor="w")
 
+        body = (
+            f"{self.reason}\n\n" if self.reason else ""
+        ) + (
+            f"Der Server hat {self.players}/{self.max_players} Spieler.\n"
+            f"(Konfigurierter Schwellenwert: {self.threshold})\n\n"
+            "Soll Squad.exe jetzt beendet werden?"
+        )
         tk.Label(
-            wrap,
-            text=(
-                f"Der Server hat {self.players}/{self.max_players} Spieler.\n"
-                f"(Konfigurierter Schwellenwert: {self.threshold})\n\n"
-                "Soll Squad.exe jetzt beendet werden?"
-            ),
+            wrap, text=body,
             bg="#111827", fg="#e5e7eb",
             font=("Segoe UI", 11), justify="left",
         ).pack(anchor="w", pady=(10, 12))
@@ -951,10 +1060,10 @@ class ShutdownPrompt:
 
 # ── Einstiegspunkt ───────────────────────────────────────────────────────────────
 def main() -> None:
-    config = load_config()
+    cfg = load_config()
     logger = setup_logger()
     root = tk.Tk()
-    BattleMetricsMonitorApp(root, config, logger)
+    BattleMetricsMonitorApp(root, cfg, logger)
     root.mainloop()
 
 

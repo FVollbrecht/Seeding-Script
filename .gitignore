@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+*.log
+
+# PyInstaller build output
+build/
+dist/
+*.spec
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Runtime config (contains personal server IDs)
+config.json
+
+# IDE
+.vscode/
+.idea/

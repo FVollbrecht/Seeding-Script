@@ -3,5 +3,6 @@
     "threshold": 65,
     "check_interval_seconds": 60,
     "prompt_timeout_seconds": 60,
-    "shutdown_delay_seconds": 1
+    "shutdown_delay_seconds": 1,
+    "shutdown_time": "20:00"
 }
