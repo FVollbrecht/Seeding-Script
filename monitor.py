@@ -40,7 +40,7 @@ LOG_FILE = os.path.join(_BASE_DIR, f"monitor_{datetime.now().strftime('%Y-%m-%d'
 
 # ── Konstanten ──────────────────────────────────────────────────────────────────
 API_BASE = "https://api.battlemetrics.com/servers/"
-API_FIELDS = "?fields[servers]=players,maxPlayers,name,status"
+API_FIELDS = "?fields[server]=players,maxPlayers,name,status"
 SERVER_PAGE_BASE = "https://www.battlemetrics.com/servers/squad/"
 def _is_valid_time(s: str) -> bool:
     """Gibt True zurück wenn s ein gültiges HH:MM-Format ist."""
