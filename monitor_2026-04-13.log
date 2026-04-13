@@ -1,0 +1,64 @@
+[2026-04-13 13:26:28] INFO     Gestartet. Server-ID=1972911, Schwelle=65, Intervall=30s
+[2026-04-13 13:26:28] INFO     Server 1972911 | Schwelle 65 | Intervall 30s | Retry 3x
+[2026-04-13 13:26:28] INFO     Spielerstand: 4/98  (Auslastung 4 %)
+[2026-04-13 13:26:29] INFO     Spielerstand: 4/98  (Auslastung 4 %)
+[2026-04-13 13:26:59] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 13:27:29] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 13:27:59] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 13:28:29] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 13:28:59] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 13:29:06] INFO     Anwendung beendet.
+[2026-04-13 13:58:46] INFO     Gestartet. Server-ID=1972911, Schwelle=65, Intervall=30s
+[2026-04-13 13:58:46] INFO     Server 1972911 | Schwelle 65 | Intervall 30s | Retry 3x
+[2026-04-13 13:58:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 13:59:00] INFO     Einstellungen gespeichert: Server 1972911 | Schwelle 4 | Intervall 30s | Timeout 60s | Shutdown-Delay 30s
+[2026-04-13 13:59:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 13:59:17] INFO     Schwelle erreicht: 5/98. Dialog wird geöffnet…
+[2026-04-13 13:59:26] INFO     Benutzer hat Shutdown abgelehnt. Überwachung läuft weiter.
+[2026-04-13 13:59:26] INFO     Shutdown abgelehnt. Spieler: 5
+[2026-04-13 13:59:40] INFO     Einstellungen gespeichert: Server 1972911 | Schwelle 65 | Intervall 30s | Timeout 60s | Shutdown-Delay 30s
+[2026-04-13 13:59:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 13:59:47] INFO     Spielerzahl wieder unter Schwelle – bei nächster Überschreitung wird erneut gefragt.
+[2026-04-13 14:00:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:00:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:01:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:01:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:02:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:02:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:03:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:03:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:04:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:04:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:05:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:05:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:05:55] INFO     Anwendung beendet.
+[2026-04-13 14:06:16] INFO     Gestartet. Server-ID=1972911, Schwelle=65, Intervall=30s
+[2026-04-13 14:06:16] INFO     Server 1972911 | Schwelle 65 | Intervall 30s | Retry 3x
+[2026-04-13 14:06:16] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:06:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:06:23] INFO     Einstellungen gespeichert: Server 1972911 | Schwelle 5 | Intervall 30s | Timeout 60s | Shutdown-Delay 30s
+[2026-04-13 14:06:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:06:47] INFO     Schwelle erreicht: 5/98. Dialog wird geöffnet…
+[2026-04-13 14:07:01] INFO     Benutzer hat Shutdown abgelehnt. Überwachung läuft weiter.
+[2026-04-13 14:07:01] INFO     Shutdown abgelehnt. Spieler: 5
+[2026-04-13 14:07:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:07:47] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:07:54] INFO     Einstellungen gespeichert: Server 1972911 | Schwelle 5 | Intervall 30s | Timeout 60s | Shutdown-Delay 30s
+[2026-04-13 14:08:17] INFO     Spielerstand: 5/98  (Auslastung 5 %)
+[2026-04-13 14:08:24] INFO     Anwendung beendet.
+[2026-04-13 14:11:12] INFO     Gestartet. Server-ID=1972911, Schwelle=5, Intervall=30s
+[2026-04-13 14:11:12] INFO     Server 1972911 | Schwelle 5 | Intervall 30s | Retry 3x
+[2026-04-13 14:11:13] INFO     Spielerstand: 4/98  (Auslastung 4 %)
+[2026-04-13 14:11:20] INFO     Einstellungen gespeichert: Server 1972911 | Schwelle 3 | Intervall 30s | Timeout 60s | Shutdown-Delay 30s
+[2026-04-13 14:11:43] INFO     Spielerstand: 4/98  (Auslastung 4 %)
+[2026-04-13 14:11:43] INFO     Schwelle erreicht: 4/98. Dialog wird geöffnet…
+[2026-04-13 14:12:13] INFO     Spielerstand: 4/98  (Auslastung 4 %)
+[2026-04-13 14:12:43] INFO     Spielerstand: 4/98  (Auslastung 4 %)
+[2026-04-13 14:12:43] INFO     Shutdown gestartet (Timeout). Spieler: 4
+[2026-04-13 14:12:43] WARNING  Shutdown ausgelöst. Spieler: 4, Grund: Timeout
+[2026-04-13 14:12:43] INFO     Squad wird in 30 Sekunden beendet (4 Spieler – Schwelle erreicht).
+[2026-04-13 14:13:13] INFO     Spielerstand: 4/98  (Auslastung 4 %)
+[2026-04-13 14:13:13] INFO     Squad.exe nicht gefunden – Prozess läuft möglicherweise nicht.
+[2026-04-13 14:13:13] WARNING  Squad.exe nicht gefunden.
+[2026-04-13 14:13:43] INFO     Spielerstand: 4/98  (Auslastung 4 %)
+[2026-04-13 14:13:58] INFO     Anwendung beendet.
